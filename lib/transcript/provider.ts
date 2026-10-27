@@ -5,7 +5,19 @@ import type { TranscriptResponse, TranscriptTrack } from "./types";
 // youtubei.js warns loudly whenever YouTube adds a field it doesn't know yet.
 Log.setLevel(Log.Level.ERROR);
 
-export type TranscriptErrorCode = "unavailable" | "no_captions" | "upstream";
+/** "blocked": YouTube refuses requests from this server (bot check or rate limit). */
+export type TranscriptErrorCode = "unavailable" | "no_captions" | "blocked" | "upstream";
+
+// The bot check sticks to cloud servers; the rate limit passes after a while.
+const BOT_CHECK_MESSAGE =
+  "YouTube is blocking caption requests from this server. Upload the subtitles as a file, or run the app on your own computer.";
+const RATE_LIMIT_MESSAGE =
+  "YouTube is limiting caption requests from this server right now. Try again in a few minutes, or upload the subtitles as a file.";
+
+/** YouTube's reasons for refusing a request it thinks comes from a bot. */
+export function isBotCheck(reason: string): boolean {
+  return /not a bot|sign in to confirm|unusual traffic/i.test(reason);
+}
 
 export class TranscriptError extends Error {
   constructor(
@@ -48,12 +60,7 @@ export class YoutubeiTranscriptProvider implements TranscriptProvider {
     const url = new URL(track.base_url, "https://www.youtube.com");
     url.searchParams.set("fmt", "json3");
     const res = await fetch(url);
-    if (res.status === 429) {
-      throw new TranscriptError(
-        "upstream",
-        "YouTube is limiting caption downloads from this computer right now. Try again in a few minutes.",
-      );
-    }
+    if (res.status === 429) throw new TranscriptError("blocked", RATE_LIMIT_MESSAGE);
     if (!res.ok) throw new TranscriptError("upstream", `YouTube refused the caption download (${res.status}).`);
 
     let data: Json3;
@@ -91,7 +98,7 @@ export class YoutubeiTranscriptProvider implements TranscriptProvider {
         reason = err instanceof Error && err.message ? err.message : reason;
       }
     }
-    throw new TranscriptError("unavailable", reason);
+    throw isBotCheck(reason) ? new TranscriptError("blocked", BOT_CHECK_MESSAGE) : new TranscriptError("unavailable", reason);
   }
 
   private getClient(): Promise<Innertube> {

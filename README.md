@@ -63,12 +63,23 @@ npm run lint
 npm run build
 ```
 
+## Deploying
+
+The app needs a server (for fetching captions), so deploy it as a Node app, not a static site. On Netlify, connecting the GitHub repository is enough: it detects Next.js and builds it.
+
+**Captions on hosted servers.** YouTube blocks caption requests from most cloud servers with a "confirm you're not a bot" check. To get captions there anyway, the app can fall back to [Supadata](https://supadata.ai), a paid transcript service with a free monthly allowance:
+
+1. Create a Supadata account and copy your API key.
+2. Add it to the host's environment variables as `SUPADATA_API_KEY` (on Netlify: Project configuration → Environment variables), then redeploy.
+
+The app still asks YouTube directly first and only uses Supadata when YouTube refuses. It never uses Supadata when YouTube says a video has no captions, so the allowance isn't spent on those. Locally you usually don't need the key; see [.env.example](.env.example).
+
 ## How it works
 
 | Part | Where |
 |---|---|
 | Embedding and controlling the video ([YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference)) | `components/YouTubePlayer.tsx` |
-| Fetching captions on the server ([youtubei.js](https://github.com/LuanRT/YouTube.js)), with a short in-memory cache | `app/api/transcript/route.ts`, `lib/transcript/provider.ts` |
+| Fetching captions on the server ([youtubei.js](https://github.com/LuanRT/YouTube.js), with [Supadata](https://supadata.ai) as an optional fallback), with a short in-memory cache | `app/api/transcript/route.ts`, `lib/transcript/provider.ts`, `lib/transcript/supadata.ts` |
 | Splitting captions into segments at sentence ends, pauses and length limits | `lib/transcript/segmenter.ts` |
 | The typing logic, as a pure reducer | `lib/typing/engine.ts` |
 | Keeping video and typing in step (checked every 50 ms) | `lib/sync/syncStep.ts`, `lib/sync/usePlayerSync.ts` |
@@ -79,7 +90,8 @@ Built with Next.js 16, React 19, TypeScript and Tailwind CSS 4. [PLAN.md](PLAN.m
 ## Known limits
 
 - **Captions come from an unofficial source.** YouTube has no public API for the captions of videos you don't own. The app uses YouTube's internal API through youtubei.js, which can break whenever YouTube changes something.
-- **YouTube may rate-limit caption downloads.** After many requests in a short time (for example, reloading often during development), YouTube answers with "429 Too Many Requests" for a while. The app says so and offers the subtitle upload. The cache lives in memory only, so it's empty again after every server restart.
+- **YouTube blocks caption requests from cloud servers.** On hosts like Netlify, YouTube answers with a "confirm you're not a bot" check, so captions only work there with a `SUPADATA_API_KEY` (see [Deploying](#deploying)). Supadata's free allowance is small, and each new video uses some of it.
+- **YouTube may rate-limit caption downloads.** After many requests in a short time (for example, reloading often during development), YouTube answers with "429 Too Many Requests" for a while. The app says so and offers the subtitle upload. The cache lives in memory only, so it's empty again after every server restart, and on serverless hosts each instance has its own.
 - **The first start needs a click on the video.** YouTube's player can also ignore a click made the moment it appears; clicking again works.
 - **Hiding YouTube's own captions is unofficial.** The player switches them off while the video plays, so they don't give away the text, but the call it uses is undocumented and could stop working.
 - **Some videos can't be embedded.** Their owners don't allow it. The player then shows an "Open on YouTube" link.

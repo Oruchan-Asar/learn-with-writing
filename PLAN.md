@@ -52,6 +52,12 @@ Every ~100 ms (via `requestAnimationFrame` or `setInterval`) read `player.getCur
    reset typing for that segment.
 5. **User pauses manually** → respect it; never auto-play a video the user paused themselves.
 
+> **Learned after deploying:** on Netlify, YouTube answers every caption request with "Sign in to
+> confirm you're not a bot". Signing in doesn't help: the official API only serves captions of your
+> own videos, and logging in to the internal API from a server risks the account. The fix is a
+> second `TranscriptProvider`: Supadata, a paid transcript service, used only when YouTube refuses
+> (`lib/transcript/fallback.ts`), enabled by setting `SUPADATA_API_KEY`.
+
 > **Learned in M6:** YouTube's embed shows its play button a moment before it reacts to clicks,
 > so a very early click on the video can do nothing; a second click works. The Playwright smoke
 > test clicks again until the video starts. Separately, the typing area now waits until focus

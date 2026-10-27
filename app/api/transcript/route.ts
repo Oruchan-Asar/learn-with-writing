@@ -1,9 +1,20 @@
 import type { NextRequest } from "next/server";
-import { TranscriptError, YoutubeiTranscriptProvider, type TranscriptErrorCode } from "@/lib/transcript/provider";
+import { FallbackTranscriptProvider } from "@/lib/transcript/fallback";
+import {
+  TranscriptError,
+  YoutubeiTranscriptProvider,
+  type TranscriptErrorCode,
+  type TranscriptProvider,
+} from "@/lib/transcript/provider";
+import { SupadataTranscriptProvider } from "@/lib/transcript/supadata";
 import type { TranscriptErrorResponse, TranscriptResponse } from "@/lib/transcript/types";
 import { isValidVideoId } from "@/lib/youtube/parseUrl";
 
-const provider = new YoutubeiTranscriptProvider();
+// YouTube directly first (free), then Supadata when a key is set: YouTube
+// blocks many cloud servers, such as serverless hosts.
+const providers: TranscriptProvider[] = [new YoutubeiTranscriptProvider()];
+if (process.env.SUPADATA_API_KEY) providers.push(new SupadataTranscriptProvider(process.env.SUPADATA_API_KEY));
+const provider = new FallbackTranscriptProvider(providers);
 
 // Captions rarely change, so keep recent ones in memory.
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -13,6 +24,7 @@ const cache = new Map<string, { at: number; data: TranscriptResponse }>();
 const STATUS: Record<TranscriptErrorCode, number> = {
   unavailable: 404,
   no_captions: 404,
+  blocked: 503,
   upstream: 502,
 };
 
