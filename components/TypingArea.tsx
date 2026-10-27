@@ -12,6 +12,7 @@ import {
   type TypingState,
 } from "@/lib/typing/engine";
 import type { TypingResult } from "@/lib/stats";
+import type { MatchOptions } from "@/lib/typing/match";
 
 
 type Props = {
@@ -19,6 +20,8 @@ type Props = {
   text: string;
   /** Indexes of words to hide (fill mode); they show as dots until typed. */
   hidden?: ReadonlySet<number>;
+  /** How letters are compared. Fixed for the life of the component; change its `key` to apply new ones. */
+  options?: Partial<MatchOptions>;
   onComplete?: (result: TypingResult) => void;
 };
 
@@ -32,8 +35,8 @@ const IFRAME_REFOCUS_MS = 300;
  * hidden <input> that keeps focus, so it works with mobile keyboards and IMEs
  * and key presses never reach the YouTube player.
  */
-export function TypingArea({ text, hidden = NO_HIDDEN, onComplete }: Props) {
-  const [state, rawDispatch] = useReducer(typingReducer, text, createTypingState);
+export function TypingArea({ text, hidden = NO_HIDDEN, options, onComplete }: Props) {
+  const [state, rawDispatch] = useReducer(typingReducer, null, () => createTypingState(text, options));
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const startedAt = useRef<number | null>(null);
@@ -74,11 +77,19 @@ export function TypingArea({ text, hidden = NO_HIDDEN, onComplete }: Props) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const reclaim = () => {
       clearTimeout(timer);
-      const delay = document.activeElement?.tagName === "IFRAME" ? IFRAME_REFOCUS_MS : 0;
+      // While the input's blur runs, focus hasn't reached its new place yet, so
+      // look once it has. Taking it back from the video too soon can land
+      // between mouse-down and mouse-up there and cancel the click.
       timer = setTimeout(() => {
         const el = document.activeElement;
-        if (!el || el === document.body || el.tagName === "BUTTON" || el.tagName === "IFRAME") input.focus();
-      }, delay);
+        if (el?.tagName === "IFRAME") {
+          timer = setTimeout(() => {
+            if (document.activeElement?.tagName === "IFRAME") input.focus();
+          }, IFRAME_REFOCUS_MS);
+        } else if (!el || el === document.body || el.tagName === "BUTTON") {
+          input.focus();
+        }
+      }, 0);
     };
     // Typing anywhere on the page also goes to the input.
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
@@ -118,7 +129,7 @@ export function TypingArea({ text, hidden = NO_HIDDEN, onComplete }: Props) {
 
   return (
     <div
-      className="relative cursor-text rounded-xl px-4 py-6"
+      className="relative cursor-text rounded-xl px-2 py-4 sm:px-4 sm:py-6"
       onMouseDown={(e) => {
         // Keep focus in the input instead of the text the user clicked.
         e.preventDefault();
@@ -129,6 +140,7 @@ export function TypingArea({ text, hidden = NO_HIDDEN, onComplete }: Props) {
         ref={inputRef}
         type="text"
         aria-label="Type the sentence"
+        data-typing-input
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
@@ -141,12 +153,18 @@ export function TypingArea({ text, hidden = NO_HIDDEN, onComplete }: Props) {
           if (value) dispatch({ type: "input", text: value });
         }}
         onKeyDown={handleKeyDown}
-        onFocus={() => setFocused(true)}
+        onFocus={(e) => {
+          setFocused(true);
+          // On phones the on-screen keyboard covers the lower half; keep the text above it.
+          if (window.matchMedia("(max-width: 639px)").matches) {
+            e.currentTarget.parentElement?.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        }}
         onBlur={() => setFocused(false)}
         className="absolute h-px w-px opacity-0"
       />
 
-      <p className="text-center font-mono text-2xl leading-relaxed tracking-wide" aria-live="off">
+      <p className="text-center font-mono text-xl leading-relaxed tracking-wide sm:text-2xl" aria-live="off">
         <Tokens state={state} hidden={hidden} showCaret={focused} />
       </p>
 

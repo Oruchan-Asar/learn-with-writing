@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { Practice } from "@/components/Practice";
 import { SubtitleUpload, uploadedSubtitlesKey, type UploadedSubtitles } from "@/components/SubtitleUpload";
 import { YouTubePlayer, type YouTubePlayerHandle } from "@/components/YouTubePlayer";
 import { formatTime } from "@/lib/format";
+import { useShortcuts } from "@/lib/shortcuts";
 import { useStoredJSON, writeJSON } from "@/lib/storage";
 import { segmentCues } from "@/lib/transcript/segmenter";
 import type { TranscriptTrack } from "@/lib/transcript/types";
@@ -31,9 +31,10 @@ export function WatchView({ videoId, startSeconds }: Props) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
+  // Updated right away, so quick repeated key presses each take a step.
+  const speedRef = useRef(1);
   // The first start has to be the user's own click on the video (see YouTubePlayer.play).
   const [started, setStarted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<string>();
   // Fallback title from the player, for when the captions request fails.
   const [playerTitle, setPlayerTitle] = useState("");
@@ -55,14 +56,31 @@ export function WatchView({ videoId, startSeconds }: Props) {
 
   const playing = state === 1 || state === 3;
 
+  function togglePlay() {
+    if (!started) return;
+    if (playing) player.current?.pause();
+    else player.current?.play();
+  }
+
+  function changeSpeed(s: number) {
+    speedRef.current = s;
+    player.current?.setPlaybackRate(s);
+    setSpeed(s);
+  }
+
+  function stepSpeed(step: number) {
+    const i = SPEEDS.indexOf(speedRef.current);
+    changeSpeed(SPEEDS[Math.min(Math.max(i + step, 0), SPEEDS.length - 1)]);
+  }
+
+  useShortcuts({
+    Escape: togglePlay,
+    ArrowUp: () => stepSpeed(1),
+    ArrowDown: () => stepSpeed(-1),
+  });
+
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6">
-      <nav>
-        <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
-          ← Another video
-        </Link>
-      </nav>
-
       <YouTubePlayer
         ref={player}
         videoId={videoId}
@@ -75,21 +93,14 @@ export function WatchView({ videoId, startSeconds }: Props) {
           setState(s);
           if (s === 1) setStarted(true);
         }}
-        onError={setError}
       />
 
-      {error && (
-        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
-          {error}
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm sm:gap-x-3">
         <button
           type="button"
           disabled={!started}
-          onClick={() => (playing ? player.current?.pause() : player.current?.play())}
-          className="h-9 w-20 rounded-lg bg-zinc-900 font-medium text-white transition hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          onClick={togglePlay}
+          className="h-9 w-16 rounded-lg bg-zinc-900 sm:w-20 font-medium text-white transition hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         >
           {playing ? "Pause" : "Play"}
         </button>
@@ -101,11 +112,8 @@ export function WatchView({ videoId, startSeconds }: Props) {
               type="button"
               disabled={!ready}
               aria-pressed={speed === s}
-              onClick={() => {
-                player.current?.setPlaybackRate(s);
-                setSpeed(s);
-              }}
-              className="h-9 px-3 tabular-nums transition hover:bg-zinc-100 disabled:opacity-40 aria-pressed:bg-sky-600 aria-pressed:text-white dark:hover:bg-zinc-800"
+              onClick={() => changeSpeed(s)}
+              className="h-9 px-2 tabular-nums transition sm:px-3 hover:bg-zinc-100 disabled:opacity-40 aria-pressed:bg-sky-600 aria-pressed:text-white dark:hover:bg-zinc-800"
             >
               {s}×
             </button>
@@ -113,10 +121,10 @@ export function WatchView({ videoId, startSeconds }: Props) {
         </div>
 
         {ready && !started && (
-          <span className="text-zinc-500">Click the video to start it.</span>
+          <span className="order-last w-full text-zinc-500 sm:order-none sm:w-auto">Click the video to start it.</span>
         )}
 
-        <span className="ml-auto font-mono tabular-nums text-zinc-500">
+        <span className="ml-auto font-mono text-xs tabular-nums text-zinc-500 sm:text-sm">
           {formatTime(time)} / {formatTime(duration)} · {STATE_LABELS[state] ?? "…"}
         </span>
       </div>

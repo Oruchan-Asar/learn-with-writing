@@ -52,6 +52,12 @@ Every ~100 ms (via `requestAnimationFrame` or `setInterval`) read `player.getCur
    reset typing for that segment.
 5. **User pauses manually** → respect it; never auto-play a video the user paused themselves.
 
+> **Learned in M6:** YouTube's embed shows its play button a moment before it reacts to clicks,
+> so a very early click on the video can do nothing; a second click works. The Playwright smoke
+> test clicks again until the video starts. Separately, the typing area now waits until focus
+> has really moved to the video before deciding when to take it back (300 ms later), so it
+> never interrupts a click there.
+
 > **Learned in M1:** browsers (Safari strictly, Chrome depending on site engagement) can block
 > unmuted `playVideo()` sent from outside the YouTube iframe until the user has played the video
 > themselves. A blocked player can even report `PLAYING` with the time frozen. So the first start

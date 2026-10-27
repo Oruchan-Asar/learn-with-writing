@@ -8,6 +8,7 @@ import type { YouTubePlayerHandle } from "@/components/YouTubePlayer";
 import { formatTime } from "@/lib/format";
 import { clearProgress, loadProgress, saveProgress } from "@/lib/progress";
 import { HIDE_LEVELS, useSettings } from "@/lib/settings";
+import { useShortcuts } from "@/lib/shortcuts";
 import { summarize, type TypingResult } from "@/lib/stats";
 import { usePlayerSync } from "@/lib/sync/usePlayerSync";
 import type { Segment } from "@/lib/transcript/types";
@@ -62,6 +63,12 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
   const summary = useMemo(() => summarize(Object.values(results)), [results]);
   const completed = useMemo(() => new Set(Object.keys(results).map(Number)), [results]);
 
+  useShortcuts({
+    Enter: sync.replay,
+    ArrowLeft: () => goTo(sync.index - 1),
+    ArrowRight: () => goTo(sync.index + 1),
+  });
+
   if (!segment) return null;
 
   function handleComplete(result: TypingResult) {
@@ -72,6 +79,7 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
   }
 
   function goTo(index: number) {
+    if (index < 0 || index >= segments.length) return;
     setResumeAt(null);
     sync.goTo(index);
   }
@@ -110,7 +118,7 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
           Skip →
         </ControlButton>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:ml-auto">
           <div className="flex overflow-hidden rounded-lg border border-zinc-300 dark:border-zinc-700" role="group" aria-label="Mode">
             {(["show", "fill"] as const).map((mode) => (
               <button
@@ -147,9 +155,10 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
       </div>
 
       <TypingArea
-        key={`${sync.index}:${sync.attempt}:${settings.mode}`}
+        key={`${sync.index}:${sync.attempt}:${settings.mode}:${settings.caseSensitive}:${settings.ignoreAccents}`}
         text={segment.text}
         hidden={hidden}
+        options={{ caseSensitive: settings.caseSensitive, ignoreAccents: settings.ignoreAccents }}
         onComplete={handleComplete}
       />
 

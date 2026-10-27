@@ -54,6 +54,8 @@ export function YouTubePlayer({ videoId, startSeconds, ref, onReady, onStateChan
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Errors from the player itself, e.g. a video that can't be embedded.
+  const [playerError, setPlayerError] = useState<string | null>(null);
 
   // Keep the latest callbacks without recreating the player when they change.
   const callbacks = useRef({ onReady, onStateChange, onError });
@@ -90,8 +92,11 @@ export function YouTubePlayer({ videoId, startSeconds, ref, onReady, onStateChan
               if (e.data === api.PlayerState.PLAYING) hideCaptions(e.target);
               callbacks.current.onStateChange?.(e.data);
             },
-            onError: (e) =>
-              callbacks.current.onError?.(ERROR_MESSAGES[e.data] ?? `The player failed (error ${e.data}).`),
+            onError: (e) => {
+              const message = ERROR_MESSAGES[e.data] ?? `The player failed (error ${e.data}).`;
+              setPlayerError(message);
+              callbacks.current.onError?.(message);
+            },
           },
         });
       })
@@ -136,9 +141,22 @@ export function YouTubePlayer({ videoId, startSeconds, ref, onReady, onStateChan
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-lg">
       <div ref={containerRef} className="absolute inset-0 [&>iframe]:h-full [&>iframe]:w-full" />
-      {loadError && (
-        <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-zinc-300">
-          {loadError}
+      {(loadError || playerError) && (
+        <div
+          role="alert"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-950 p-6 text-center text-sm text-zinc-300"
+        >
+          <p className="max-w-sm">{loadError ?? playerError}</p>
+          {playerError && (
+            <a
+              href={`https://www.youtube.com/watch?v=${videoId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/20"
+            >
+              Open on YouTube ↗
+            </a>
+          )}
         </div>
       )}
     </div>
