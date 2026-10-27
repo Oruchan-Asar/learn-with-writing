@@ -2,22 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { formatTime } from "@/lib/format";
-import { findSegmentIndex } from "@/lib/transcript/findSegment";
 import type { Segment } from "@/lib/transcript/types";
 
 type Props = {
   segments: Segment[];
-  currentTime: number;
-  onSeek: (seconds: number) => void;
+  /** The segment being typed. */
+  activeIndex: number;
+  onSelect: (index: number) => void;
 };
 
 /**
- * Debug view of the segmented transcript: every segment with its time range,
- * the one at the current time highlighted, click to jump there.
+ * The segmented transcript: every segment with its time range, the one being
+ * typed highlighted, click to jump there.
  */
-export function SegmentList({ segments, currentTime, onSeek }: Props) {
+export function SegmentList({ segments, activeIndex: active, onSelect }: Props) {
   const listRef = useRef<HTMLOListElement>(null);
-  const active = findSegmentIndex(segments, currentTime);
 
   // Keep the active segment in view by scrolling the list only, not the page.
   useEffect(() => {
@@ -36,7 +35,7 @@ export function SegmentList({ segments, currentTime, onSeek }: Props) {
         <li key={seg.id}>
           <button
             type="button"
-            onClick={() => onSeek(seg.start)}
+            onClick={() => onSelect(i)}
             aria-current={i === active ? "true" : undefined}
             className="flex w-full gap-4 border-b border-zinc-100 px-4 py-2 text-left text-sm transition last:border-0 hover:bg-zinc-50 aria-[current]:bg-sky-50 dark:border-zinc-900 dark:hover:bg-zinc-900 dark:aria-[current]:bg-sky-950/60"
           >

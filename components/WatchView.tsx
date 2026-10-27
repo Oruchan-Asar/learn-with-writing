@@ -2,11 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { SegmentList } from "@/components/SegmentList";
-import { TypingArea } from "@/components/TypingArea";
+import { Practice } from "@/components/Practice";
 import { YouTubePlayer, type YouTubePlayerHandle } from "@/components/YouTubePlayer";
 import { formatTime } from "@/lib/format";
-import { findSegmentIndex } from "@/lib/transcript/findSegment";
 import type { TranscriptTrack } from "@/lib/transcript/types";
 import { useTranscript } from "@/lib/transcript/useTranscript";
 
@@ -35,13 +33,8 @@ export function WatchView({ videoId, startSeconds }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<string>();
   const transcript = useTranscript(videoId, lang);
-  // For now the typing area follows the video; M4 makes the video wait for the typing.
-  const typingSegment =
-    transcript.status === "ready"
-      ? transcript.segments[Math.max(0, findSegmentIndex(transcript.segments, time))]
-      : undefined;
 
-  // Poll the current time. M4 turns this into the pause/resume sync loop.
+  // Poll the current time for the clock display.
   useEffect(() => {
     if (!ready) return;
     const id = setInterval(() => {
@@ -149,13 +142,11 @@ export function WatchView({ videoId, startSeconds }: Props) {
               ))}
             </select>
           </div>
-          {typingSegment && (
-            <TypingArea key={`${transcript.transcript.track.code}:${typingSegment.id}`} text={typingSegment.text} />
-          )}
-          <SegmentList
+          <Practice
+            key={transcript.transcript.track.code}
+            player={player}
+            ready={ready}
             segments={transcript.segments}
-            currentTime={time}
-            onSeek={(seconds) => player.current?.seekTo(seconds)}
           />
         </section>
       )}
