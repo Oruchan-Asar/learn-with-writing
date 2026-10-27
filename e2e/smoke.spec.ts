@@ -125,7 +125,13 @@ test("difficulty levels change what has to be typed", async ({ page }) => {
   await expect(typingStats).toContainText("0% accuracy");
   await page.keyboard.press("Backspace");
   await page.keyboard.press("Backspace");
-  await page.keyboard.type("Hi, Sam. The robot waited.");
+  // While typing, the sentence on screen must always read exactly like the original.
+  const sentence = page.locator("p.font-mono");
+  for (const part of ["Hi", ",", " Sam", ".", " The", " robot"]) {
+    await page.keyboard.type(part);
+    await expect(sentence).toHaveText("Hi, Sam. The robot waited.");
+  }
+  await page.keyboard.type(" waited.");
   await expect(done).toBeVisible();
 
   // Turning one rule off in Settings shows the mix as custom.

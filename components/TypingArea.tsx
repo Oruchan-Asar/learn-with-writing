@@ -202,7 +202,8 @@ export function TypingArea({ text, hidden = NO_HIDDEN, options, onComplete }: Pr
 }
 
 function Tokens({ state, hidden, showCaret }: { state: TypingState; hidden: ReadonlySet<number>; showCaret: boolean }) {
-  const currentToken = state.done ? -1 : state.wordTokens[state.current];
+  // `current` counts units, which include punctuation when it's typed.
+  const currentToken = state.done ? -1 : state.units[state.current];
   const isHidden = (tokenIndex: number) => hidden.has(state.wordTokens.indexOf(tokenIndex));
 
   return state.tokens.map((token, i) => {
