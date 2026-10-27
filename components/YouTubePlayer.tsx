@@ -28,8 +28,9 @@ const ERROR_MESSAGES: Record<number, string> = {
   2: "The video id is invalid.",
   5: "This video can't be played in the browser's HTML5 player.",
   100: "This video doesn't exist or is private.",
-  101: "The owner of this video doesn't allow it to be played on other sites.",
-  150: "The owner of this video doesn't allow it to be played on other sites.",
+  // YouTube also uses these codes for videos that don't exist.
+  101: "This video can't be played here. It may not exist, or its owner doesn't allow embedding.",
+  150: "This video can't be played here. It may not exist, or its owner doesn't allow embedding.",
 };
 
 /**

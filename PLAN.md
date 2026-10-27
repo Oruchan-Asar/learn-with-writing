@@ -75,6 +75,11 @@ Every ~100 ms (via `requestAnimationFrame` or `setInterval`) read `player.getCur
 > swap in `yt-dlp` or a Python `youtube-transcript-api` microservice; run locally first; also allow
 > **uploading an `.srt` / `.vtt` file** as a manual fallback.
 
+> **Learned in M2:** `youtubei.js` `getBasicInfo` with the `WEB` client returns caption tracks
+> (`IOS` as fallback); `getInfo` and the transcript panel endpoint failed. Captions are then
+> downloaded from the track URL with `fmt=json3`. Auto-generated tracks carry per-word offsets,
+> which the parser uses for word-level timing.
+
 ### 3.2 Segmenter (pure function, unit-tested)
 
 Raw cues are messy, especially auto captions (short overlapping fragments, no punctuation). Turn them
