@@ -12,6 +12,10 @@ export type TypingState = {
   /** Characters typed, and how many of them were wrong. */
   keystrokes: number;
   mistakes: number;
+  /** Letters revealed with hints. They don't count as keystrokes. */
+  hints: number;
+  /** Mistakes per word, by index into `wordTokens`. */
+  mistakesByWord: Record<number, number>;
   done: boolean;
   options: MatchOptions;
 };
@@ -19,7 +23,8 @@ export type TypingState = {
 export type TypingAction =
   | { type: "input"; text: string }
   | { type: "backspace" }
-  | { type: "clearWord" };
+  | { type: "clearWord" }
+  | { type: "hint" };
 
 // Wrong characters past the end of a word that are still shown; more are ignored.
 const MAX_EXTRA_CHARS = 8;
@@ -34,6 +39,8 @@ export function createTypingState(text: string, options: Partial<MatchOptions> =
     typed: "",
     keystrokes: 0,
     mistakes: 0,
+    hints: 0,
+    mistakesByWord: {},
     done: wordTokens.length === 0,
     options: { ...DEFAULT_MATCH_OPTIONS, ...options },
   };
@@ -61,7 +68,30 @@ export function typingReducer(state: TypingState, action: TypingAction): TypingS
       return state.typed ? { ...state, typed: [...state.typed].slice(0, -1).join("") } : state;
     case "clearWord":
       return state.typed ? { ...state, typed: "" } : state;
+    case "hint":
+      return hint(state);
   }
+}
+
+/**
+ * Reveals the next letter of the current word. Wrong letters are replaced by
+ * the right ones first, so a hint always moves the user forward.
+ */
+function hint(state: TypingState): TypingState {
+  const wordChars = [...currentWord(state)];
+  const typedChars = [...state.typed];
+  let correct = 0;
+  while (correct < typedChars.length && correct < wordChars.length && charsMatch(typedChars[correct], wordChars[correct], state.options)) {
+    correct++;
+  }
+  const typed = wordChars.slice(0, correct + 1).join("");
+  const next = { ...state, typed, hints: state.hints + 1 };
+  return typed.length === wordChars.join("").length ? advance(next) : next;
+}
+
+function advance(state: TypingState): TypingState {
+  const current = state.current + 1;
+  return { ...state, current, typed: "", done: current >= state.wordTokens.length };
 }
 
 function typeChar(state: TypingState, char: string): TypingState {
@@ -83,11 +113,16 @@ function typeChar(state: TypingState, char: string): TypingState {
     typed,
     keystrokes: state.keystrokes + 1,
     mistakes: state.mistakes + (correct ? 0 : 1),
+    mistakesByWord: correct
+      ? state.mistakesByWord
+      : { ...state.mistakesByWord, [state.current]: (state.mistakesByWord[state.current] ?? 0) + 1 },
   };
-  if (!wordMatches(typed, word, state.options)) return next;
+  return wordMatches(typed, word, state.options) ? advance(next) : next;
+}
 
-  const current = state.current + 1;
-  return { ...next, current, typed: "", done: current >= state.wordTokens.length };
+/** The words the user typed wrong at least once, as written in the text. */
+export function mistypedWords(state: TypingState): string[] {
+  return Object.keys(state.mistakesByWord).map((i) => state.tokens[state.wordTokens[Number(i)]].text);
 }
 
 export function currentWord(state: TypingState): string {

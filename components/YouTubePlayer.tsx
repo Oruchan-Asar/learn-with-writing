@@ -13,6 +13,8 @@ export type YouTubePlayerHandle = {
   getState: () => YT.PlayerState | null;
   getPlaybackRate: () => number;
   setPlaybackRate: (rate: number) => void;
+  /** The video's title as the player knows it; empty until it's loaded. */
+  getTitle: () => string;
 };
 
 type Props = {
@@ -124,6 +126,8 @@ export function YouTubePlayer({ videoId, startSeconds, ref, onReady, onStateChan
         getState: () => p()?.getPlayerState() ?? null,
         getPlaybackRate: () => p()?.getPlaybackRate() ?? 1,
         setPlaybackRate: (rate) => p()?.setPlaybackRate(rate),
+        // getVideoData is part of the player but missing from its type definitions.
+        getTitle: () => (p() as (YT.Player & { getVideoData?: () => { title?: string } }) | null)?.getVideoData?.().title ?? "",
       };
     },
     [],

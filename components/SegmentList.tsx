@@ -9,13 +9,15 @@ type Props = {
   /** The segment being typed. */
   activeIndex: number;
   onSelect: (index: number) => void;
+  /** Ids of segments already typed, marked with a check. */
+  completed?: ReadonlySet<number>;
 };
 
 /**
  * The segmented transcript: every segment with its time range, the one being
  * typed highlighted, click to jump there.
  */
-export function SegmentList({ segments, activeIndex: active, onSelect }: Props) {
+export function SegmentList({ segments, activeIndex: active, onSelect, completed }: Props) {
   const listRef = useRef<HTMLOListElement>(null);
 
   // Keep the active segment in view by scrolling the list only, not the page.
@@ -42,7 +44,12 @@ export function SegmentList({ segments, activeIndex: active, onSelect }: Props) 
             <span className="w-24 shrink-0 font-mono text-xs leading-5 tabular-nums text-zinc-500">
               {formatTime(seg.start)}–{formatTime(seg.end)}
             </span>
-            <span className="leading-5">{seg.text}</span>
+            <span className="flex-1 leading-5">{seg.text}</span>
+            {completed?.has(seg.id) && (
+              <span className="text-teal-600 dark:text-teal-400" aria-label="typed">
+                ✓
+              </span>
+            )}
           </button>
         </li>
       ))}

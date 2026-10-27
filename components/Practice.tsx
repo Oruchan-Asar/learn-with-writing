@@ -1,58 +1,187 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import { SegmentList } from "@/components/SegmentList";
+import { SessionSummary } from "@/components/SessionSummary";
 import { TypingArea } from "@/components/TypingArea";
 import type { YouTubePlayerHandle } from "@/components/YouTubePlayer";
 import { formatTime } from "@/lib/format";
+import { clearProgress, loadProgress, saveProgress } from "@/lib/progress";
+import { HIDE_LEVELS, useSettings } from "@/lib/settings";
+import { summarize, type TypingResult } from "@/lib/stats";
 import { usePlayerSync } from "@/lib/sync/usePlayerSync";
 import type { Segment } from "@/lib/transcript/types";
+import { pickHiddenWords } from "@/lib/typing/hide";
+import { tokenize } from "@/lib/typing/tokenize";
 
 type Props = {
   player: RefObject<YouTubePlayerHandle | null>;
   /** The player is ready to be read and controlled. */
   ready: boolean;
   segments: Segment[];
+  videoId: string;
+  title: string;
+  /** Identifies the caption track; progress is saved per track. */
+  trackCode: string;
 };
 
-/** Type along with the video: the typing area, its controls and the segment list. */
-export function Practice({ player, ready, segments }: Props) {
+const NO_HIDDEN: ReadonlySet<number> = new Set();
+
+/** Type along with the video: the typing area, its controls, stats and the segment list. */
+export function Practice({ player, ready, segments, videoId, title, trackCode }: Props) {
   const sync = usePlayerSync(player, segments, ready);
+  const [settings, updateSettings] = useSettings();
+
+  // Practice only renders once captions have loaded in the browser, so storage can be read here.
+  const [saved] = useState(() => loadProgress(videoId, trackCode));
+  const [results, setResults] = useState<Record<number, TypingResult>>(() => saved?.results ?? {});
+  const [resumeAt, setResumeAt] = useState<number | null>(() =>
+    saved && saved.index > 0 && saved.index < segments.length ? saved.index : null,
+  );
+  const [showSummary, setShowSummary] = useState(false);
+
   const segment = segments[sync.index];
   const next = segments[sync.index + 1];
+  const typedCount = Object.keys(results).length;
+
+  // Save where the user is. Don't overwrite a saved position with the start of
+  // the video before they've chosen whether to continue from it.
+  useEffect(() => {
+    if (sync.index === 0 && (resumeAt !== null || typedCount === 0)) return;
+    saveProgress({ videoId, title, trackCode, total: segments.length }, { index: sync.index, results });
+  }, [sync.index, results, resumeAt, typedCount, videoId, title, trackCode, segments.length]);
+
+  const wordCount = useMemo(() => (segment ? tokenize(segment.text).filter((t) => t.kind === "word").length : 0), [segment]);
+  const hidden = useMemo(
+    () =>
+      settings.mode === "fill" && segment
+        ? pickHiddenWords(wordCount, settings.hideRatio, `${videoId}:${trackCode}:${segment.id}`)
+        : NO_HIDDEN,
+    [settings.mode, settings.hideRatio, wordCount, videoId, trackCode, segment],
+  );
+  const summary = useMemo(() => summarize(Object.values(results)), [results]);
+  const completed = useMemo(() => new Set(Object.keys(results).map(Number)), [results]);
+
   if (!segment) return null;
+
+  function handleComplete(result: TypingResult) {
+    setResults((r) => ({ ...r, [segment.id]: result }));
+    setResumeAt(null);
+    sync.complete();
+    if (!next) setShowSummary(true);
+  }
+
+  function goTo(index: number) {
+    setResumeAt(null);
+    sync.goTo(index);
+  }
 
   return (
     <div className="flex flex-col gap-3">
+      {resumeAt !== null && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-sky-50 px-4 py-3 text-sm dark:bg-sky-950/40">
+          <span className="flex-1">
+            You were on segment {resumeAt + 1} ({formatTime(segments[resumeAt].start)}) with {typedCount} typed.
+          </span>
+          <ControlButton onClick={() => goTo(resumeAt)} label="Continue from where you left off">
+            Continue
+          </ControlButton>
+          <ControlButton
+            onClick={() => {
+              clearProgress(videoId, trackCode);
+              setResults({});
+              setResumeAt(null);
+            }}
+            label="Forget the saved progress and start over"
+          >
+            Start over
+          </ControlButton>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <ControlButton onClick={() => sync.goTo(sync.index - 1)} disabled={sync.index === 0} label="Previous segment">
+        <ControlButton onClick={() => goTo(sync.index - 1)} disabled={sync.index === 0} label="Previous segment">
           ← Prev
         </ControlButton>
         <ControlButton onClick={sync.replay} label="Play this segment again">
           ↺ Replay
         </ControlButton>
-        <ControlButton onClick={() => sync.goTo(sync.index + 1)} disabled={!next} label="Skip to the next segment">
+        <ControlButton onClick={() => goTo(sync.index + 1)} disabled={!next} label="Skip to the next segment">
           Skip →
         </ControlButton>
-        <span className="ml-auto tabular-nums text-zinc-500">
-          Segment {sync.index + 1} / {segments.length}
-        </span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex overflow-hidden rounded-lg border border-zinc-300 dark:border-zinc-700" role="group" aria-label="Mode">
+            {(["show", "fill"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={settings.mode === mode}
+                onClick={() => updateSettings({ mode })}
+                title={mode === "show" ? "Show the whole sentence" : "Hide some words: type what you hear"}
+                className="h-8 px-3 transition hover:bg-zinc-100 aria-pressed:bg-sky-600 aria-pressed:text-white dark:hover:bg-zinc-800"
+              >
+                {mode === "show" ? "Show" : "Fill"}
+              </button>
+            ))}
+          </div>
+          {settings.mode === "fill" && (
+            <select
+              value={settings.hideRatio}
+              onChange={(e) => updateSettings({ hideRatio: Number(e.target.value) })}
+              aria-label="Words hidden"
+              className="h-8 rounded-lg border border-zinc-300 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              {HIDE_LEVELS.map((level) => (
+                <option key={level.ratio} value={level.ratio}>
+                  {level.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       <div className="h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-        <div
-          className="h-full bg-teal-500 transition-[width]"
-          style={{ width: `${((sync.index + (sync.done ? 1 : 0)) / segments.length) * 100}%` }}
-        />
+        <div className="h-full bg-teal-500 transition-[width]" style={{ width: `${(typedCount / segments.length) * 100}%` }} />
       </div>
 
-      <TypingArea key={`${sync.index}:${sync.attempt}`} text={segment.text} onComplete={sync.complete} />
+      <TypingArea
+        key={`${sync.index}:${sync.attempt}:${settings.mode}`}
+        text={segment.text}
+        hidden={hidden}
+        onComplete={handleComplete}
+      />
 
       <p className="min-h-5 text-center text-sm text-zinc-500" aria-live="polite">
         {status(sync, next)}
       </p>
 
-      <SegmentList segments={segments} activeIndex={sync.index} onSelect={sync.goTo} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums text-zinc-500">
+        <span>
+          Segment {sync.index + 1} / {segments.length} · {typedCount} typed
+        </span>
+        {typedCount > 0 && (
+          <>
+            <span>{Math.round(summary.wpm)} wpm</span>
+            <span>{Math.round(summary.accuracy * 100)}% accuracy</span>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowSummary((v) => !v)}
+          disabled={typedCount === 0}
+          className="ml-auto underline decoration-dotted underline-offset-2 hover:text-zinc-800 disabled:no-underline disabled:opacity-40 dark:hover:text-zinc-200"
+        >
+          {showSummary ? "Hide summary" : "Summary"}
+        </button>
+      </div>
+
+      {showSummary && typedCount > 0 && (
+        <SessionSummary summary={summary} total={segments.length} onClose={() => setShowSummary(false)} />
+      )}
+
+      <SegmentList segments={segments} activeIndex={sync.index} onSelect={goTo} completed={completed} />
     </div>
   );
 }
@@ -73,7 +202,7 @@ function ControlButton({
   onClick: () => void;
   disabled?: boolean;
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button

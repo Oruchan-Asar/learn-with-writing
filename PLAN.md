@@ -80,6 +80,11 @@ Every ~100 ms (via `requestAnimationFrame` or `setInterval`) read `player.getCur
 > downloaded from the track URL with `fmt=json3`. Auto-generated tracks carry per-word offsets,
 > which the parser uses for word-level timing.
 
+> **Learned in M5:** after many requests in a short time (e.g. repeated reloads while developing,
+> which also clear the in-memory cache on every dev-server restart), YouTube answers caption
+> downloads with **429 Too Many Requests** for a while. The app then says so and offers the
+> `.srt` / `.vtt` upload. A persistent (on-disk) cache would reduce how often this happens.
+
 ### 3.2 Segmenter (pure function, unit-tested)
 
 Raw cues are messy, especially auto captions (short overlapping fragments, no punctuation). Turn them
@@ -131,7 +136,7 @@ Normalize both sides before comparing:
 |---|---|
 | `Ctrl+R` / `⌥R` | Replay current segment |
 | `Ctrl+←` / `Ctrl+→` | Previous / next segment |
-| `Ctrl+H` | Hint: reveal the next letter or word |
+| `Tab` | Hint: reveal the next letter (Ctrl+H opens history in some browsers) |
 | `Ctrl+Space` | Play / pause |
 | `Ctrl+↑` / `Ctrl+↓` | Playback speed up / down |
 

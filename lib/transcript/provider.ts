@@ -48,6 +48,12 @@ export class YoutubeiTranscriptProvider implements TranscriptProvider {
     const url = new URL(track.base_url, "https://www.youtube.com");
     url.searchParams.set("fmt", "json3");
     const res = await fetch(url);
+    if (res.status === 429) {
+      throw new TranscriptError(
+        "upstream",
+        "YouTube is limiting caption downloads from this computer right now. Try again in a few minutes.",
+      );
+    }
     if (!res.ok) throw new TranscriptError("upstream", `YouTube refused the caption download (${res.status}).`);
 
     let data: Json3;

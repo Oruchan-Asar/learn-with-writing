@@ -4,6 +4,7 @@ import {
   createTypingState,
   currentWord,
   currentWordView,
+  mistypedWords,
   tokenDone,
   typingReducer,
   type TypingAction,
@@ -125,5 +126,41 @@ describe("tokenDone", () => {
     expect([0, 1, 2, 3, 4].map((i) => tokenDone(s, i))).toEqual([true, true, true, false, false]);
     const done = type(s, "there");
     expect([0, 1, 2, 3, 4].map((i) => tokenDone(done, i))).toEqual([true, true, true, true, true]);
+  });
+});
+
+describe("hints", () => {
+  it("reveals the next letter without counting a keystroke", () => {
+    const s = type(createTypingState("cat dog"), { type: "hint" });
+    expect(s.typed).toBe("c");
+    expect(s.hints).toBe(1);
+    expect(s.keystrokes).toBe(0);
+  });
+
+  it("replaces wrong letters with the right ones first", () => {
+    const s = type(createTypingState("cat"), "cx", { type: "hint" });
+    expect(s.typed).toBe("ca");
+  });
+
+  it("moves to the next word when the hint completes it", () => {
+    const s = type(createTypingState("cat dog"), "ca", { type: "hint" });
+    expect(s.current).toBe(1);
+    expect(s.typed).toBe("");
+  });
+
+  it("can finish the whole segment", () => {
+    let s = createTypingState("go");
+    s = type(s, { type: "hint" }, { type: "hint" });
+    expect(s.done).toBe(true);
+    expect(s.hints).toBe(2);
+  });
+});
+
+describe("mistypedWords", () => {
+  it("lists each word that got a wrong letter, once", () => {
+    const s = type(createTypingState("The cat, the dog."), "the", "cx", backspace, "at", "tje", backspace, backspace, "he", "dog");
+    expect(mistypedWords(s)).toEqual(["cat", "the"]);
+    // In "tje", the "e" after the wrong "j" counts as wrong too.
+    expect(s.mistakesByWord).toEqual({ 1: 1, 2: 2 });
   });
 });

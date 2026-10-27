@@ -1,3 +1,4 @@
+import { RecentVideos } from "@/components/RecentVideos";
 import { UrlForm } from "@/components/UrlForm";
 
 export default function Home() {
@@ -10,6 +11,7 @@ export default function Home() {
         </p>
       </div>
       <UrlForm />
+      <RecentVideos />
     </main>
   );
 }

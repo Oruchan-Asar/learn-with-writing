@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Practice } from "@/components/Practice";
+import { SubtitleUpload, uploadedSubtitlesKey, type UploadedSubtitles } from "@/components/SubtitleUpload";
 import { YouTubePlayer, type YouTubePlayerHandle } from "@/components/YouTubePlayer";
 import { formatTime } from "@/lib/format";
+import { useStoredJSON, writeJSON } from "@/lib/storage";
+import { segmentCues } from "@/lib/transcript/segmenter";
 import type { TranscriptTrack } from "@/lib/transcript/types";
 import { useTranscript } from "@/lib/transcript/useTranscript";
 
@@ -32,7 +35,13 @@ export function WatchView({ videoId, startSeconds }: Props) {
   const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<string>();
+  // Fallback title from the player, for when the captions request fails.
+  const [playerTitle, setPlayerTitle] = useState("");
   const transcript = useTranscript(videoId, lang);
+  // Subtitles the user uploaded take the place of YouTube's captions.
+  const uploaded = useStoredJSON<UploadedSubtitles>(uploadedSubtitlesKey(videoId));
+  const uploadedSegments = useMemo(() => (uploaded ? segmentCues(uploaded.cues) : null), [uploaded]);
+  const title = (transcript.status === "ready" ? transcript.transcript.title : "") || playerTitle;
 
   // Poll the current time for the clock display.
   useEffect(() => {
@@ -58,7 +67,10 @@ export function WatchView({ videoId, startSeconds }: Props) {
         ref={player}
         videoId={videoId}
         startSeconds={startSeconds}
-        onReady={() => setReady(true)}
+        onReady={() => {
+          setReady(true);
+          setPlayerTitle(player.current?.getTitle() ?? "");
+        }}
         onStateChange={(s) => {
           setState(s);
           if (s === 1) setStarted(true);
@@ -109,21 +121,62 @@ export function WatchView({ videoId, startSeconds }: Props) {
         </span>
       </div>
 
-      {transcript.status === "loading" && (
+      {uploaded && uploadedSegments && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <h1 className="min-w-0 flex-1 truncate font-medium" title={title}>
+              {title || "Your subtitles"}
+            </h1>
+            <span className="text-zinc-500">
+              {uploadedSegments.length} segments · from {uploaded.fileName}
+            </span>
+            <button
+              type="button"
+              onClick={() => writeJSON(uploadedSubtitlesKey(videoId), null)}
+              className="text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-800 dark:hover:text-zinc-200"
+            >
+              Use YouTube captions
+            </button>
+          </div>
+          {uploadedSegments.length ? (
+            <Practice
+              key={`upload:${uploaded.fileName}`}
+              player={player}
+              ready={ready}
+              segments={uploadedSegments}
+              videoId={videoId}
+              title={title}
+              trackCode="upload"
+            />
+          ) : (
+            <p className="text-sm text-zinc-500">These subtitles contain no speech to type.</p>
+          )}
+        </section>
+      )}
+
+      {!uploaded && transcript.status === "loading" && (
         <p className="py-6 text-center text-sm text-zinc-500">Loading captions…</p>
       )}
 
-      {transcript.status === "error" && (
-        <p role="alert" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          {transcript.error}
-        </p>
+      {!uploaded && transcript.status === "error" && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+        >
+          <span className="flex-1">{transcript.error}</span>
+          <SubtitleUpload
+            videoId={videoId}
+            label="Upload an .srt or .vtt file instead"
+            className="font-medium underline underline-offset-2"
+          />
+        </div>
       )}
 
-      {transcript.status === "ready" && (
+      {!uploaded && transcript.status === "ready" && (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <h1 className="min-w-0 flex-1 truncate font-medium" title={transcript.transcript.title}>
-              {transcript.transcript.title}
+            <h1 className="min-w-0 flex-1 truncate font-medium" title={title}>
+              {title}
             </h1>
             <span className="text-zinc-500">
               {transcript.segments.length} segments
@@ -141,12 +194,16 @@ export function WatchView({ videoId, startSeconds }: Props) {
                 </option>
               ))}
             </select>
+            <SubtitleUpload videoId={videoId} />
           </div>
           <Practice
             key={transcript.transcript.track.code}
             player={player}
             ready={ready}
             segments={transcript.segments}
+            videoId={videoId}
+            title={title}
+            trackCode={transcript.transcript.track.code}
           />
         </section>
       )}
