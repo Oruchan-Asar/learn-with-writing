@@ -86,3 +86,50 @@ test("shows friendly errors for bad links", async ({ page }) => {
   await page.goto("/watch/not-valid");
   await expect(page.getByRole("heading", { name: "That page doesn't exist" })).toBeVisible();
 });
+
+test("difficulty levels change what has to be typed", async ({ page }) => {
+  await mockTranscript(page, {
+    status: 200,
+    body: { ...FAKE_TRANSCRIPT, cues: [{ start: 0, end: 3, text: "Hi, Sam. The robot waited." }] },
+  });
+  await page.goto(`/watch/${VIDEO_ID}`);
+  const difficulty = page.getByLabel("Difficulty");
+  const done = page.getByText("✓ Done");
+  const input = page.getByLabel("Type the sentence");
+  // The word count and accuracy under the sentence being typed.
+  const typingStats = page.locator("p.font-mono + div");
+
+  // Easy (the default): no spaces, any case, punctuation filled in.
+  await expect(difficulty).toHaveValue("easy");
+  await input.focus();
+  await page.keyboard.type("hisamtherobotwaited");
+  await expect(done).toBeVisible();
+
+  // Medium: the same keys don't finish it without spaces.
+  await difficulty.selectOption("medium");
+  await input.focus();
+  await page.keyboard.type("hisam");
+  await expect(typingStats).toContainText("1 / 5 words");
+  await expect(typingStats).toContainText("40% accuracy");
+  await expect(done).toBeHidden();
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(" sam the robot waited");
+  await expect(done).toBeVisible();
+
+  // Hard: exact case and punctuation; lower case "hi" isn't accepted.
+  await difficulty.selectOption("hard");
+  await input.focus();
+  await page.keyboard.type("hi");
+  await expect(typingStats).toContainText("0% accuracy");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("Hi, Sam. The robot waited.");
+  await expect(done).toBeVisible();
+
+  // Turning one rule off in Settings shows the mix as custom.
+  await page.getByRole("button", { name: "⚙ Settings" }).click();
+  await page.getByLabel("Type punctuation too").uncheck();
+  await expect(difficulty).toHaveValue("custom");
+});

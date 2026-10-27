@@ -13,6 +13,10 @@ export type Settings = {
   caseSensitive: boolean;
   /** Accept "e" for "é" and so on. */
   ignoreAccents: boolean;
+  /** A word only counts once the space after it is typed. */
+  requireSpace: boolean;
+  /** Punctuation has to be typed instead of being filled in. */
+  typePunctuation: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -21,7 +25,41 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   caseSensitive: false,
   ignoreAccents: true,
+  requireSpace: false,
+  typePunctuation: false,
 };
+
+type DifficultyRules = Pick<Settings, "requireSpace" | "caseSensitive" | "typePunctuation">;
+
+/** Presets for how exactly the text must be typed. Accents stay a separate choice. */
+export const DIFFICULTIES: { id: string; label: string; description: string; rules: DifficultyRules }[] = [
+  {
+    id: "easy",
+    label: "Easy",
+    description: "No spaces, any case, punctuation filled in",
+    rules: { requireSpace: false, caseSensitive: false, typePunctuation: false },
+  },
+  {
+    id: "medium",
+    label: "Medium",
+    description: "Space after each word",
+    rules: { requireSpace: true, caseSensitive: false, typePunctuation: false },
+  },
+  {
+    id: "hard",
+    label: "Hard",
+    description: "Spaces, exact case and punctuation",
+    rules: { requireSpace: true, caseSensitive: true, typePunctuation: true },
+  },
+];
+
+/** The preset the settings match, or "custom". */
+export function difficultyOf(settings: Settings): string {
+  const match = DIFFICULTIES.find((d) =>
+    (Object.keys(d.rules) as (keyof DifficultyRules)[]).every((k) => d.rules[k] === settings[k]),
+  );
+  return match?.id ?? "custom";
+}
 
 export const HIDE_LEVELS = [
   { ratio: 0.3, label: "Easy (30%)" },

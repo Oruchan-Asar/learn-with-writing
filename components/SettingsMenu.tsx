@@ -74,9 +74,19 @@ export function SettingsMenu() {
           <fieldset className="mt-4 flex flex-col gap-2">
             <legend className="mb-2 font-medium">Typing</legend>
             <Toggle
+              label="Press space after each word"
+              checked={settings.requireSpace}
+              onChange={(requireSpace) => update({ requireSpace })}
+            />
+            <Toggle
               label="Match upper and lower case"
               checked={settings.caseSensitive}
               onChange={(caseSensitive) => update({ caseSensitive })}
+            />
+            <Toggle
+              label="Type punctuation too"
+              checked={settings.typePunctuation}
+              onChange={(typePunctuation) => update({ typePunctuation })}
             />
             <Toggle
               label="Accept letters without accents (e for é)"

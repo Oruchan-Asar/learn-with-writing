@@ -20,6 +20,8 @@ const EQUIVALENTS: Record<string, string> = {
   "–": "-",
   "—": "-",
   "‐": "-",
+  // One key press for the ellipsis character.
+  "…": ".",
 };
 
 /** Brings a character to the form it's compared in. */

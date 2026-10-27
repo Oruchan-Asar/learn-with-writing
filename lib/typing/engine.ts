@@ -1,23 +1,40 @@
 import { charsMatch, DEFAULT_MATCH_OPTIONS, wordMatches, type MatchOptions } from "./match";
 import { tokenize, type Token } from "./tokenize";
 
+export type TypingOptions = MatchOptions & {
+  /** A word only counts once the space after it is typed. */
+  requireSpace: boolean;
+  /** Punctuation has to be typed instead of being filled in. */
+  typePunctuation: boolean;
+};
+
+export const DEFAULT_TYPING_OPTIONS: TypingOptions = {
+  ...DEFAULT_MATCH_OPTIONS,
+  requireSpace: false,
+  typePunctuation: false,
+};
+
 export type TypingState = {
   tokens: Token[];
-  /** Indexes into `tokens` of the words the user types, in order. */
+  /** Indexes into `tokens` of the words, in order. */
   wordTokens: number[];
-  /** Index into `wordTokens` of the word being typed; equals its length when done. */
+  /** Indexes into `tokens` of what the user types, in order: the words, plus punctuation if it's typed. */
+  units: number[];
+  /** What has to be typed for each unit: its text, plus a space after it when spaces are required. */
+  targets: string[];
+  /** Index into `units` of the one being typed; equals its length when done. */
   current: number;
-  /** What the user has typed of the current word. */
+  /** What the user has typed of the current unit. */
   typed: string;
   /** Characters typed, and how many of them were wrong. */
   keystrokes: number;
   mistakes: number;
-  /** Letters revealed with hints. They don't count as keystrokes. */
+  /** Characters revealed with hints. They don't count as keystrokes. */
   hints: number;
-  /** Mistakes per word, by index into `wordTokens`. */
-  mistakesByWord: Record<number, number>;
+  /** Mistakes per unit, by index into `units`. */
+  mistakesByUnit: Record<number, number>;
   done: boolean;
-  options: MatchOptions;
+  options: TypingOptions;
 };
 
 export type TypingAction =
@@ -26,29 +43,43 @@ export type TypingAction =
   | { type: "clearWord" }
   | { type: "hint" };
 
-// Wrong characters past the end of a word that are still shown; more are ignored.
+// Wrong characters past the end of a unit that are still shown; more are ignored.
 const MAX_EXTRA_CHARS = 8;
 
-export function createTypingState(text: string, options: Partial<MatchOptions> = {}): TypingState {
+export function createTypingState(text: string, options: Partial<TypingOptions> = {}): TypingState {
+  const opts = { ...DEFAULT_TYPING_OPTIONS, ...options };
   const tokens = tokenize(text);
   const wordTokens = tokens.flatMap((t, i) => (t.kind === "word" ? [i] : []));
+  const units = opts.typePunctuation ? tokens.map((_, i) => i) : wordTokens;
+
+  // A unit needs a space after it if the text has one before the next unit.
+  // Punctuation that's filled in sits between them, so look at every token in between.
+  const targets = units.map((tokenIndex, i) => {
+    const nextUnit = units[i + 1];
+    const spaceAfter =
+      nextUnit !== undefined && tokens.slice(tokenIndex + 1, nextUnit + 1).some((t) => t.spaceBefore);
+    return tokens[tokenIndex].text + (opts.requireSpace && spaceAfter ? " " : "");
+  });
+
   return {
     tokens,
     wordTokens,
+    units,
+    targets,
     current: 0,
     typed: "",
     keystrokes: 0,
     mistakes: 0,
     hints: 0,
-    mistakesByWord: {},
-    done: wordTokens.length === 0,
-    options: { ...DEFAULT_MATCH_OPTIONS, ...options },
+    mistakesByUnit: {},
+    done: units.length === 0,
+    options: opts,
   };
 }
 
 /**
- * Applies a keystroke. A word must be typed correctly to move on; as soon as
- * it is, the next word starts, so no space is needed. Spaces are ignored,
+ * Applies a keystroke. A unit must be typed correctly to move on; as soon as
+ * it is, the next one starts. Unless spaces are required, they're ignored,
  * which also absorbs the habit of pressing space after each word. Wrong
  * characters stay until they're deleted.
  */
@@ -74,37 +105,43 @@ export function typingReducer(state: TypingState, action: TypingAction): TypingS
 }
 
 /**
- * Reveals the next letter of the current word. Wrong letters are replaced by
- * the right ones first, so a hint always moves the user forward.
+ * Reveals the next character of the current unit. Wrong characters are
+ * replaced by the right ones first, so a hint always moves the user forward.
  */
 function hint(state: TypingState): TypingState {
-  const wordChars = [...currentWord(state)];
+  const targetChars = [...currentTarget(state)];
   const typedChars = [...state.typed];
   let correct = 0;
-  while (correct < typedChars.length && correct < wordChars.length && charsMatch(typedChars[correct], wordChars[correct], state.options)) {
+  while (
+    correct < typedChars.length &&
+    correct < targetChars.length &&
+    charsMatch(typedChars[correct], targetChars[correct], state.options)
+  ) {
     correct++;
   }
-  const typed = wordChars.slice(0, correct + 1).join("");
+  const typed = targetChars.slice(0, correct + 1).join("");
   const next = { ...state, typed, hints: state.hints + 1 };
-  return typed.length === wordChars.join("").length ? advance(next) : next;
+  return correct + 1 >= targetChars.length ? advance(next) : next;
 }
 
 function advance(state: TypingState): TypingState {
   const current = state.current + 1;
-  return { ...state, current, typed: "", done: current >= state.wordTokens.length };
+  return { ...state, current, typed: "", done: current >= state.units.length };
 }
 
-function typeChar(state: TypingState, char: string): TypingState {
-  if (/\s/.test(char)) return state;
+function typeChar(state: TypingState, rawChar: string): TypingState {
+  const isSpace = /\s/.test(rawChar);
+  if (isSpace && !state.options.requireSpace) return state;
+  const char = isSpace ? " " : rawChar;
 
-  const word = currentWord(state);
+  const target = currentTarget(state);
   const typedChars = [...state.typed];
-  const wordChars = [...word];
-  if (typedChars.length >= wordChars.length + MAX_EXTRA_CHARS) return state;
+  const targetChars = [...target];
+  if (typedChars.length >= targetChars.length + MAX_EXTRA_CHARS) return state;
 
-  const expected = wordChars[typedChars.length];
+  const expected = targetChars[typedChars.length];
   // A character is only right if everything before it is right too.
-  const prefixOk = typedChars.every((c, i) => charsMatch(c, wordChars[i], state.options));
+  const prefixOk = typedChars.every((c, i) => charsMatch(c, targetChars[i], state.options));
   const correct = prefixOk && expected !== undefined && charsMatch(char, expected, state.options);
   const typed = state.typed + char;
 
@@ -113,21 +150,36 @@ function typeChar(state: TypingState, char: string): TypingState {
     typed,
     keystrokes: state.keystrokes + 1,
     mistakes: state.mistakes + (correct ? 0 : 1),
-    mistakesByWord: correct
-      ? state.mistakesByWord
-      : { ...state.mistakesByWord, [state.current]: (state.mistakesByWord[state.current] ?? 0) + 1 },
+    mistakesByUnit: correct
+      ? state.mistakesByUnit
+      : { ...state.mistakesByUnit, [state.current]: (state.mistakesByUnit[state.current] ?? 0) + 1 },
   };
-  return wordMatches(typed, word, state.options) ? advance(next) : next;
+  return wordMatches(typed, target, state.options) ? advance(next) : next;
 }
 
 /** The words the user typed wrong at least once, as written in the text. */
 export function mistypedWords(state: TypingState): string[] {
-  return Object.keys(state.mistakesByWord).map((i) => state.tokens[state.wordTokens[Number(i)]].text);
+  return Object.keys(state.mistakesByUnit)
+    .map((i) => state.tokens[state.units[Number(i)]])
+    .filter((token) => token.kind === "word")
+    .map((token) => token.text);
 }
 
+/** The current unit's text, without the space after it. */
 export function currentWord(state: TypingState): string {
-  const index = state.wordTokens[state.current];
+  const index = state.units[state.current];
   return index === undefined ? "" : state.tokens[index].text;
+}
+
+function currentTarget(state: TypingState): string {
+  return state.targets[state.current] ?? "";
+}
+
+/** How many words are typed, counting punctuation-only progress as none. */
+export function wordsTyped(state: TypingState): number {
+  if (state.done) return state.wordTokens.length;
+  const currentToken = state.units[state.current];
+  return state.wordTokens.filter((t) => t < currentToken).length;
 }
 
 /** Share of keystrokes that were right, from 0 to 1; 1 before any typing. */
@@ -137,29 +189,37 @@ export function accuracy(state: TypingState): number {
 
 export type CharView = { char: string; status: "correct" | "wrong" | "pending" | "extra" };
 
-/** Per-character status of the current word, for coloring. */
+// Makes a mistyped space visible.
+const SPACE_MARK = "␣";
+
+/**
+ * Per-character status of the current unit, for coloring. The space a unit
+ * may need after it isn't shown as a character (the gap to the next word is),
+ * so anything typed past the unit's text shows as extra.
+ */
 export function currentWordView(state: TypingState): CharView[] {
   const wordChars = [...currentWord(state)];
   const typedChars = [...state.typed];
+  const shown = (c: string) => (c === " " ? SPACE_MARK : c);
   let ok = true;
   const view: CharView[] = wordChars.map((char, i) => {
     if (i >= typedChars.length) return { char, status: "pending" };
     ok = ok && charsMatch(typedChars[i], char, state.options);
     // Show what the user typed where it's wrong, so they can see the mistake.
-    return ok ? { char, status: "correct" } : { char: typedChars[i], status: "wrong" };
+    return ok ? { char, status: "correct" } : { char: shown(typedChars[i]), status: "wrong" };
   });
-  for (const char of typedChars.slice(wordChars.length)) view.push({ char, status: "extra" });
+  for (const char of typedChars.slice(wordChars.length)) view.push({ char: shown(char), status: "extra" });
   return view;
 }
 
 /**
- * Whether a token has been typed: a word once the user has moved past it,
- * punctuation once the word before it has been typed.
+ * Whether a token has been typed: a unit once the user has moved past it, and
+ * punctuation that's filled in once the unit before it has been typed.
  */
 export function tokenDone(state: TypingState, tokenIndex: number): boolean {
   if (state.done) return true;
-  const currentToken = state.wordTokens[state.current];
+  const currentToken = state.units[state.current];
   if (tokenIndex >= currentToken) return false;
-  // Punctuation before the first word counts as typed only once that word is.
-  return !(state.tokens[tokenIndex].kind === "punct" && state.current === 0);
+  // Filled-in punctuation before the first unit counts as typed only once that unit is.
+  return !(state.tokens[tokenIndex].kind === "punct" && state.current === 0 && !state.options.typePunctuation);
 }

@@ -8,11 +8,12 @@ import {
   mistypedWords,
   tokenDone,
   typingReducer,
+  wordsTyped,
   type TypingAction,
+  type TypingOptions,
   type TypingState,
 } from "@/lib/typing/engine";
 import type { TypingResult } from "@/lib/stats";
-import type { MatchOptions } from "@/lib/typing/match";
 
 
 type Props = {
@@ -21,7 +22,7 @@ type Props = {
   /** Indexes of words to hide (fill mode); they show as dots until typed. */
   hidden?: ReadonlySet<number>;
   /** How letters are compared. Fixed for the life of the component; change its `key` to apply new ones. */
-  options?: Partial<MatchOptions>;
+  options?: Partial<TypingOptions>;
   onComplete?: (result: TypingResult) => void;
 };
 
@@ -170,7 +171,7 @@ export function TypingArea({ text, hidden = NO_HIDDEN, options, onComplete }: Pr
 
       <div className="mt-3 flex justify-center gap-4 text-xs text-zinc-500 tabular-nums">
         <span>
-          {Math.min(state.current + (state.done ? 0 : 1), state.wordTokens.length)} / {state.wordTokens.length} words
+          {Math.min(wordsTyped(state) + (state.done ? 0 : 1), state.wordTokens.length)} / {state.wordTokens.length} words
         </span>
         <span>{Math.round(accuracy(state) * 100)}% accuracy</span>
         {state.done ? (

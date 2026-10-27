@@ -7,7 +7,7 @@ import { TypingArea } from "@/components/TypingArea";
 import type { YouTubePlayerHandle } from "@/components/YouTubePlayer";
 import { formatTime } from "@/lib/format";
 import { clearProgress, loadProgress, saveProgress } from "@/lib/progress";
-import { HIDE_LEVELS, useSettings } from "@/lib/settings";
+import { DIFFICULTIES, difficultyOf, HIDE_LEVELS, useSettings } from "@/lib/settings";
 import { useShortcuts } from "@/lib/shortcuts";
 import { summarize, type TypingResult } from "@/lib/stats";
 import { usePlayerSync } from "@/lib/sync/usePlayerSync";
@@ -71,6 +71,12 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
 
   if (!segment) return null;
 
+  // Changing a typing rule starts the segment again with the new rules.
+  const typingRulesKey = [settings.caseSensitive, settings.ignoreAccents, settings.requireSpace, settings.typePunctuation]
+    .map(Number)
+    .join("");
+  const difficulty = difficultyOf(settings);
+
   function handleComplete(result: TypingResult) {
     setResults((r) => ({ ...r, [segment.id]: result }));
     setResumeAt(null);
@@ -118,7 +124,28 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
           Skip →
         </ControlButton>
 
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <select
+            value={difficulty}
+            onChange={(e) => {
+              const preset = DIFFICULTIES.find((d) => d.id === e.target.value);
+              if (preset) updateSettings(preset.rules);
+            }}
+            aria-label="Difficulty"
+            title={DIFFICULTIES.find((d) => d.id === difficulty)?.description ?? "Your own mix of typing rules (see Settings)"}
+            className="h-8 rounded-lg border border-zinc-300 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            {DIFFICULTIES.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}: {d.description}
+              </option>
+            ))}
+            {difficulty === "custom" && (
+              <option value="custom" disabled>
+                Custom (see Settings)
+              </option>
+            )}
+          </select>
           <div className="flex overflow-hidden rounded-lg border border-zinc-300 dark:border-zinc-700" role="group" aria-label="Mode">
             {(["show", "fill"] as const).map((mode) => (
               <button
@@ -155,10 +182,15 @@ export function Practice({ player, ready, segments, videoId, title, trackCode }:
       </div>
 
       <TypingArea
-        key={`${sync.index}:${sync.attempt}:${settings.mode}:${settings.caseSensitive}:${settings.ignoreAccents}`}
+        key={`${sync.index}:${sync.attempt}:${settings.mode}:${typingRulesKey}`}
         text={segment.text}
         hidden={hidden}
-        options={{ caseSensitive: settings.caseSensitive, ignoreAccents: settings.ignoreAccents }}
+        options={{
+          caseSensitive: settings.caseSensitive,
+          ignoreAccents: settings.ignoreAccents,
+          requireSpace: settings.requireSpace,
+          typePunctuation: settings.typePunctuation,
+        }}
         onComplete={handleComplete}
       />
 

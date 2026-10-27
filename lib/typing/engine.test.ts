@@ -5,6 +5,7 @@ import {
   currentWord,
   currentWordView,
   mistypedWords,
+  wordsTyped,
   tokenDone,
   typingReducer,
   type TypingAction,
@@ -161,6 +162,94 @@ describe("mistypedWords", () => {
     const s = type(createTypingState("The cat, the dog."), "the", "cx", backspace, "at", "tje", backspace, backspace, "he", "dog");
     expect(mistypedWords(s)).toEqual(["cat", "the"]);
     // In "tje", the "e" after the wrong "j" counts as wrong too.
-    expect(s.mistakesByWord).toEqual({ 1: 1, 2: 2 });
+    expect(s.mistakesByUnit).toEqual({ 1: 1, 2: 2 });
+  });
+});
+
+describe("requiring a space after each word", () => {
+  const opts = { requireSpace: true };
+
+  it("waits for the space before moving on", () => {
+    let s = type(createTypingState("one two", opts), "one");
+    expect(s.current).toBe(0);
+    s = type(s, " ");
+    expect(s.current).toBe(1);
+  });
+
+  it("doesn't need a space after the last word", () => {
+    expect(type(createTypingState("one two", opts), "one two").done).toBe(true);
+  });
+
+  it("counts a missing space as a mistake", () => {
+    const s = type(createTypingState("one two", opts), "onet");
+    expect(s.mistakes).toBe(1);
+    expect(s.current).toBe(0);
+    expect(currentWordView(s).at(-1)).toEqual({ char: "t", status: "extra" });
+  });
+
+  it("counts a space inside a word as a mistake, and shows it", () => {
+    const s = type(createTypingState("open door", opts), "op ");
+    expect(s.mistakes).toBe(1);
+    expect(currentWordView(s)[2]).toEqual({ char: "␣", status: "wrong" });
+  });
+
+  it("treats any whitespace as a space", () => {
+    expect(type(createTypingState("one two", opts), "one two").done).toBe(true);
+  });
+
+  it("needs the space even when punctuation in between is filled in", () => {
+    let s = type(createTypingState("Hi, there.", opts), "hi");
+    expect(s.current).toBe(0);
+    s = type(s, " there");
+    expect(s.done).toBe(true);
+  });
+
+  it("can be revealed by a hint", () => {
+    const s = type(createTypingState("one two", opts), "one", { type: "hint" });
+    expect(s.current).toBe(1);
+    expect(s.hints).toBe(1);
+  });
+});
+
+describe("typing punctuation", () => {
+  const opts = { typePunctuation: true };
+
+  it("makes punctuation part of what's typed", () => {
+    let s = type(createTypingState("Hi, there.", opts), "hithere");
+    expect(s.done).toBe(false);
+    expect(currentWord(s)).toBe(",");
+    s = type(createTypingState("Hi, there.", opts), "hi,there.");
+    expect(s.done).toBe(true);
+  });
+
+  it("counts wrong punctuation as a mistake, but only lists words as mistyped", () => {
+    const s = type(createTypingState("Stop. Go", opts), "stop!", backspace, ".go");
+    expect(s.done).toBe(true);
+    expect(s.mistakes).toBe(1);
+    expect(mistypedWords(s)).toEqual([]);
+  });
+
+  it("accepts the keyboard version of typographic punctuation", () => {
+    expect(type(createTypingState("Wait… “yes” — it’s fine", opts), `wait."yes"-it's fine`).done).toBe(true);
+  });
+
+  it("is exactly the text with spaces required too", () => {
+    const strict = { typePunctuation: true, requireSpace: true, caseSensitive: true };
+    expect(type(createTypingState("Hi, there. (Twice!)", strict), "Hi, there. (Twice!)").done).toBe(true);
+    expect(type(createTypingState("Hi, there.", strict), "Hi,there.").done).toBe(false);
+  });
+
+  it("counts typed punctuation before the first word as done once typed", () => {
+    let s = type(createTypingState("(Hello) there", opts), "(");
+    expect(tokenDone(s, 0)).toBe(true);
+    s = type(s, "hello)");
+    expect([0, 1, 2].map((i) => tokenDone(s, i))).toEqual([true, true, true]);
+  });
+
+  it("counts only words in the word total", () => {
+    let s = createTypingState("Hi, there.", opts);
+    expect(wordsTyped(s)).toBe(0);
+    s = type(s, "hi,");
+    expect(wordsTyped(s)).toBe(1);
   });
 });
